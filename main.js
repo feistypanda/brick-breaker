@@ -1,4 +1,33 @@
-const [WIDTH, HEIGHT] = [1200, 800];
+
+const [WIDTH, HEIGHT, SCALE] = (() => {
+
+	const [EXPECTED_WIDTH, EXPECTED_HEIGHT] = [1200, 800];
+	const ASPECT_RATIO = EXPECTED_WIDTH/EXPECTED_HEIGHT;
+
+	const padding = 20;
+
+	// Source - https://stackoverflow.com/a/8876069
+	// Posted by ryanve, modified by community. See post 'Timeline' for change history
+	// Retrieved 2026-09-27, License - CC BY-SA 4.0
+
+	// Get viewport WIDTH and HEIGHT
+	let vw = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0) - padding * 2;
+	let vh = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0) - padding * 2;
+
+	console.log(vw, vh);
+
+	// Scale the vh so that it would be equal to hw if they had the desired aspect ratio
+	let scaledVH = vh * ASPECT_RATIO;
+
+	// Find out which dimension is the constraining one;
+	let min = Math.min(vw, scaledVH);
+
+	if (min === vw) {
+		return [vw, vw / ASPECT_RATIO, vw/EXPECTED_WIDTH];
+	} else {
+		return [vh * ASPECT_RATIO, vh, vh/EXPECTED_HEIGHT];
+	}
+})();
 
 const colors = {
 	darkBlack: color(10, 5, 5),
@@ -13,9 +42,55 @@ let keys = {};
 const copyObj = obj => JSON.parse(JSON.stringify(obj));
 
 const images = (() => {
-	return {
+
+	const images = {
 
 	};
+
+	return images;
+})();
+
+const Vector = (() => {
+
+	class Vector {
+		constructor (x, y, z) {
+			this.x = x;
+			this.y = y;
+			this.z = z;
+		}
+
+		add (v, y, z) {
+			if (y == null || z == null) return new Vector(this.x + v.x, this.y + v.y, this.z + v.z);
+			else return new Vector(this.x + v, this.y + y, this.z + z);
+		}
+
+		sub (v, y, z) {
+			if (y == null || z == null) return new Vector(this.x - v.x, this.y - v.y, this.z - v.z);
+			else return new Vector(this.x - v, this.y - y, this.z - z);
+		}
+
+		mult (s) {
+			return new Vector(this.x * s, this.y * s, this.z * s);
+		}
+
+		div (s) {
+			return this.mult(1/s);
+		}
+
+		toString () {
+			return `x: ${this.x}, y: ${this.y}, z: ${this.z}`
+		}
+	}
+
+	return Vector
+})();
+
+const player = (() => {
+	class Player {
+		constructor (config) {
+			this.position = new Vector(config.x ?? 0, config.y ?? 0);
+		}
+	}
 })();
 
 const scenes = (() => {
@@ -41,6 +116,7 @@ const scenes = (() => {
 	const defaults = {
 		transitionType: "slide",
 		transitionSpeed: 1,
+		transitionGetImage: get,
 
 		colors: {
 			transition: color(220),
@@ -99,7 +175,7 @@ const scenes = (() => {
 
 				if (data.getImage != null) dataOut.getImage = data.getImage;
 				else if (data.image != null) dataOut.image = data.image;
-				else throw "data.getImage or data.image is required";
+				else dataOut.getImage = scenes.defaults.transitionGetImage;
 
 				dataOut.speed = data.speed ?? scenes.defaults.transitionSpeed;
 				
@@ -169,7 +245,7 @@ const scenes = (() => {
 
 					if (typeof data.to !== "string") errors.push("invalid data.to");
 
-					if (typeof data.image !== "object") errors.push("invalid data.speed");
+					if (typeof data.image !== "object") errors.push("invalid data.image");
 
 					if (typeof data.speed !== "number") errors.push("invalid data.speed");
 
@@ -228,64 +304,87 @@ const scenes = (() => {
 		})(),
 	
 		loading: (() => {
-	
-			let curInd = 0;
-			let keys = Object.keys(images);
+			
+			// Convert image functions into image objects and return the progress of the loading
+			const convertImages = (() => {
+				
+				let keys = Object.keys(images);
+				let curInd = 0;
+				let maxInd = keys.length;
+
+				return function () {
+
+					// Calculate the progress and return early if already done
+					const progress = (curInd + 1)/maxInd;
+					if (progress > 1) return progress;
+					
+					// replace the functions in the image objects with what they return
+					const imageName = keys[curInd];
+					if (images[imageName]) images[imageName] = images[imageName]();	
+
+					curInd ++;
+
+					return progress;
+				}
+			})();
+
+			const displayLoadingProgress = (() => {
+
+				function displayCircle (progress) {
+					noFill();
+
+					strokeWeight(15 * SCALE);
+					stroke(scenes.defaults.colors.loading.text);
+
+					let offset = PI/2 + progress * 0.9 * PI * 2;
+					let circleProgress = 2 * PI * progress
+					arc(WIDTH/2, HEIGHT/2.5, 200 * SCALE, 200 * SCALE, offset, circleProgress + offset);
+				}
+
+				function displayText (progress) {
+					textAlign(CENTER, CENTER);
+					textSize(100 * SCALE);
+					textFont('Anton');
+
+					fill(scenes.defaults.colors.loading.text);
+					noStroke();
+
+					text(`Loading: ${Math.round(progress * 100)}%`, WIDTH/2, HEIGHT/1.5);
+				}
+
+				return function (progress) {
+					push();
+
+					displayCircle(progress);
+					displayText(progress);
+
+					pop();
+				}
+			})();
+
+			function handleTransition (progress) {
+				if (progress >= 1) scenes.transition({ to: sceneAfterLoading });
+			}
 	
 			return function () {
 
+				push();
+				
 				background(scenes.defaults.colors.loading.background);
-	
-				// replace the functions in the image objects with what they return;
-				if (images[keys[curInd]]) images[keys[curInd]] = images[keys[curInd]]();
-				
-				// generate text with . for progress
-				let txt = (() => {
-	
-					if (curInd >= keys.length - 1) return "LOADED!";
-	
-					let res = ["LOADING"];
-					for (let j = 0; j <= curInd / 2; j ++) {
-						res[res.length - 1] += "."
-						if (textWidth(res[res.length - 1]) > 550) {
-							res[res.length - 1] += "\n";
-							res.push("");
-						}
-					}
 
-					const innitial = "";
-					const fullRes = res.reduce(
-					   (accumulator, currentValue) => accumulator + currentValue,
-						innitial,
-					);
+				const progress = Math.min(1, convertImages());
+								
+				displayLoadingProgress(progress);
+				handleTransition(progress);
 
-					return fullRes;
-				})();
-				
-				// Display the loading progress
-				textSize(100);
-				textFont('Anton');
-				fill(scenes.defaults.colors.loading.text);
-				textAlign(CENTER, BASELINE);
-	
-				text(txt, 300, 270);
-	
-				curInd ++;
-
-				if (curInd >= keys.length) {
-					scenes.transition({
-						to: sceneAfterLoading,
-						getImage: get,
-
-					});
-				}
+				pop();
 			}
 		})(),
 
 		play: (() => {
 			return function () {
 				background(colors.black);
-				
+
 			}
 		})(),
 	};
