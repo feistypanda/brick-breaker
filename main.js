@@ -14,8 +14,6 @@ const [WIDTH, HEIGHT, SCALE] = (() => {
 	let vw = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0) - padding * 2;
 	let vh = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0) - padding * 2;
 
-	console.log(vw, vh);
-
 	// Scale the vh so that it would be equal to hw if they had the desired aspect ratio
 	let scaledVH = vh * ASPECT_RATIO;
 
@@ -53,7 +51,7 @@ const images = (() => {
 const Vector = (() => {
 
 	class Vector {
-		constructor (x, y, z) {
+		constructor (x = 0, y = 0, z = 0) {
 			this.x = x;
 			this.y = y;
 			this.z = z;
@@ -86,11 +84,242 @@ const Vector = (() => {
 })();
 
 const player = (() => {
+
+	const calculateTopSpeed = (speed, drag) => (speed * drag) / (1 - drag)
+
 	class Player {
-		constructor (config) {
+		constructor (config = {}) {
+			this.config = config;
+			this.reset();
+		}
+
+		get x () {
+			return this.position.x;
+		}
+
+		get y () {
+			return this.position.y;
+		}
+
+		reset () {
+			
+			const config = this.config;
+
 			this.position = new Vector(config.x ?? 0, config.y ?? 0);
+			this.velocity = new Vector();
+
+			this.width = config.width ?? 20 * SCALE;
+			this.height = config.height ?? 20 * SCALE;
+
+			this.speed = config.speed ?? 6 * SCALE;
+			this.drag = config.drag ?? 0.6;
+
+			this.topSpeed = calculateTopSpeed(this.speed, this.drag);
+
+			this.angle = 0;
+			this.maxAngle = PI/40;
+		}
+
+		run (data) {
+			this.update(data);
+			this.display(data);
+		}
+
+		handleMovement (keys) {
+			if (keys.a) this.velocity.x -= this.speed;
+			if (keys.d) this.velocity.x += this.speed;
+		}
+
+		applyVelocity () {
+			this.position = this.position.add(this.velocity);
+		}
+
+		applyDrag () {
+			this.velocity = this.velocity.mult(this.drag);
+		}
+
+		handleAngle () {
+			this.angle = this.maxAngle * this.velocity.x / this.topSpeed;
+		}
+
+		update (data) {
+			this.handleMovement(data.keys);
+			this.applyVelocity();
+			this.applyDrag();
+			this.handleAngle();
+		}
+
+		display () {
+			push();
+
+			translate(this.x, this.y);
+			rotate(this.angle);
+
+			noStroke();
+			fill(colors.white);
+			rect(-this.width/2, -this.height/2, this.width, this.height);
+
+			pop();
 		}
 	}
+
+	return new Player({
+		x: 600 * SCALE,
+		y: 760 * SCALE,
+		width: 200 * SCALE,
+		height: 40 * SCALE,
+	});
+})();
+
+const ball = (() => {
+
+	const AABB = (a, b) => a.x + a.width  / 2 > b.x - b.width  / 2 &&
+						   b.x + b.width  / 2 > a.x - a.width  / 2 && 
+						   a.y + a.height / 2 > b.y - b.height / 2 &&
+						   b.y + b.height / 2 > a.y - a.height / 2;
+
+	class Ball {
+		constructor (config) {
+			this.position = new Vector(config.x ?? 0, config.y ?? 0);
+			this.lastX = this.position.x;
+			this.lastY = this.position.y;
+			this.velocity = new Vector();
+
+			this.size = 20 * SCALE;
+			this.speed = 10 * SCALE;
+		}
+
+		get x () {
+			return this.position.x;
+		}
+
+		get y () {
+			return this.position.y;
+		}
+
+		get width () {
+			return this.size;
+		}
+
+		get height () {
+			return this.size;
+		}
+
+		run (data) {
+			this.update(data);
+			this.display();
+		}
+
+		reset () {
+			this.position.x = WIDTH / 2;
+			this.position.y = HEIGHT / 2;
+
+			this.startInRandomDirection();
+		}
+
+		startInRandomDirection () {
+			const angle = Math.random() * -PI/2 - PI/4;
+
+			this.velocity.x = cos(angle) * this.speed;
+			this.velocity.y = sin(angle) * this.speed; 
+		}
+
+		bounceOffEdges () {
+			
+			const s = this.size/2;
+
+			let [xs, xb, ys, yb] = [
+				this.position.x - s < 0,
+				this.position.x + s > WIDTH,
+				this.position.y - s < 0,
+				this.position.y + s > HEIGHT
+			];
+
+			if (xs || xb) this.velocity.x *= -1;
+			if (ys || yb) this.velocity.y *= -1;
+
+			if (xs) this.position.x = s;
+			if (xb) this.position.x = WIDTH - s;
+			if (ys) this.position.y = s;
+			if (yb) this.position.y = HEIGHT - s;
+		}
+
+		bounceOffBox (box) {
+			// Only continue if we are colliding
+			if (!AABB(this, player)) return false;
+
+			let bounce = {};
+
+			// Bounce off of top
+			if (this.lastY + this.size/2 < player.y - player.height/2) {
+				this.position.y = player.y - player.height/2 - this.size/2;
+				this.velocity.y *= -1;
+				bounce.top = true;
+			}
+
+			// Bounce off of bottom
+			if (this.lastY - this.size/2 > player.y + player.height/2) {
+				this.position.y = player.y + player.height/2 + this.size/2;
+				this.velocity.y *= -1;
+				bounce.bottom = true;
+			}
+
+			// Bounce off of left
+			if (this.lastX + this.size/2 < player.x - player.width/2) {
+				this.position.x = player.x - player.width/2 - this.size/2;
+				this.velocity.x *= -1;
+				bounce.left = true;
+			}
+
+			// Bounce off of right
+			if (this.lastX - this.size/2 > player.x + player.width/2) {
+				this.position.x = player.x + player.width/2 + this.size/2;
+				this.velocity.x *= -1;
+				bounce.right = true;
+			}
+
+			return bounce;
+		}
+
+		setVelForAngle (angle) {
+			this.velocity.x = cos(angle) * this.speed;
+			this.velocity.y = sin(angle) * this.speed;
+		}
+
+		bounceOffPlayer (player) {
+			const res = this.bounceOffBox(player);
+
+			if (res && res.top) {
+				const curAngle = Math.atan2(this.velocity.y, this.velocity.x);
+
+				if (player.velocity.x > 0) this.setVelForAngle(Math.min(curAngle + PI/20, -PI/8));
+				else if (player.velocity.x < 0) this.setVelForAngle(Math.max(curAngle - PI/20, -7 * PI/8));
+			}
+			
+		}
+
+		applyVelocity () {
+			this.lastX = this.position.x;
+			this.lastY = this.position.y;
+			this.position = this.position.add(this.velocity);
+		}
+
+		update (data) {
+			this.applyVelocity();
+			this.bounceOffEdges();
+			this.bounceOffPlayer(data.player);
+		}
+
+		display () {
+			push();
+			noStroke();
+			fill(colors.white);
+			rect(this.x - this.size/2, this.y - this.size/2, this.size, this.size);
+			pop();
+		}
+	}
+
+	return new Ball({x: WIDTH/2, y: HEIGHT/2 });
 })();
 
 const scenes = (() => {
@@ -382,9 +611,45 @@ const scenes = (() => {
 		})(),
 
 		play: (() => {
+
+			let state;
+
+			function switchState (_state) {
+				if (_state === "start") state = { state: "start", time: 1, next: "waiting" };
+				else if (_state === "waiting") state = { state: "waiting", time: 60, next: "play" };
+				else if (_state === "play") state = { state: "play", time: Infinity, next: null };
+			}
+
+			switchState("start");
+
+			function handleState () {
+				state.time --;
+				if (state.time <= 0) switchState(state.next);
+			}
+
+			function start () {
+				player.reset();
+				ball.reset();
+			}
+
+			function wait () {
+				player.display();
+				ball.display();
+			}
+
+			function play () {
+				player.run({ keys });
+				ball.run({ player });
+			}
+
 			return function () {
 				background(colors.black);
 
+				if (state.state === "start") start();
+				else if (state.state === "waiting") wait(); 
+				else if (state.state === "play") play();
+
+				handleState();
 			}
 		})(),
 	};
