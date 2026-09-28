@@ -295,7 +295,6 @@ const ball = (() => {
 				if (player.velocity.x > 0) this.setVelForAngle(Math.min(curAngle + PI/20, -PI/8));
 				else if (player.velocity.x < 0) this.setVelForAngle(Math.max(curAngle - PI/20, -7 * PI/8));
 			}
-			
 		}
 
 		applyVelocity () {
@@ -320,6 +319,81 @@ const ball = (() => {
 	}
 
 	return new Ball({x: WIDTH/2, y: HEIGHT/2 });
+})();
+
+const bricks = (() => {
+
+	const brickColors = [color(59, 133, 75), color(236, 196, 68), color(202, 66, 62), color(87, 132, 230)];
+
+	const brickWidth = 109 * SCALE;
+	const brickHeight = 50 * SCALE;
+	const brickGap = 10 * SCALE;
+
+	class Brick {
+		constructor (config) {
+			this.x = config.x ?? 0;
+			this.y = config.y ?? 0;
+			this.width = config.width ?? brickWidth;
+			this.height = config.height ?? brickHeight;
+
+			this.level = config.level ?? 0;
+			this.dead = false;
+		}
+
+		run () {
+			this.display();
+			return this.dead;
+		}
+
+		display () {
+			push();
+
+			noStroke();
+			fill(brickColors[this.level]);
+
+			rect(this.x - this.width/2, this.y - this.height/2, this.width, this.height);
+
+			pop();
+		}
+	}
+
+	const bricks = {
+		bricks: [],
+
+		run () {
+			for (var i = this.bricks.length - 1; i >= 0; i--) {
+				if (this.bricks[i].run()) this.bricks.splice(i, 1);
+			}
+		},
+
+		add (config) {
+			this.bricks.push(new Brick(config));
+		},
+
+		clear () {
+			this.bricks = [];
+		},
+
+		reset () {
+			this.clear();
+
+			const maxBricks = WIDTH / (brickWidth + brickGap + 1);
+
+			for (let i = 0; i < 4; i ++) {
+				
+				let y = i * (brickHeight + brickGap) + brickGap + brickHeight/2;
+
+				for (let j = 0; j < maxBricks; j ++) {
+
+					let x = j * (brickWidth + brickGap) + brickGap + brickWidth/2;
+
+					this.add({ x, y, level: 3 - i})
+				}
+			}
+		},
+	};
+
+	return bricks;
 })();
 
 const scenes = (() => {
@@ -630,16 +704,19 @@ const scenes = (() => {
 			function start () {
 				player.reset();
 				ball.reset();
+				bricks.reset();
 			}
 
 			function wait () {
 				player.display();
 				ball.display();
+				bricks.run();
 			}
 
 			function play () {
 				player.run({ keys });
 				ball.run({ player });
+				bricks.run();
 			}
 
 			return function () {
