@@ -37,6 +37,9 @@ const colors = {
 let click = false;
 let keys = {};
 
+let score = 0;
+let lives = 3;
+
 const copyObj = obj => JSON.parse(JSON.stringify(obj));
 
 const images = (() => {
@@ -299,7 +302,10 @@ const ball = (() => {
 		
 		bounceOffBricks (bricks) {
 			for (const i of bricks.bricks) {
-				if (this.bounceOffBox(i)) i.dead = true;
+				if (this.bounceOffBox(i) && !i.dead) {
+					i.dead = true;
+					score += i.level * 50 + 50;
+				}
 			}
 		}
 
@@ -718,12 +724,32 @@ const scenes = (() => {
 				player.display();
 				ball.display();
 				bricks.run();
+
+				displayScore();
 			}
 
 			function play () {
 				player.run({ keys });
 				ball.run({ player, bricks });
 				bricks.run();
+
+				displayScore();
+			}
+
+			function displayScore () {
+				push();
+
+				fill(colors.white);
+				stroke(colors.lightBlack);
+				strokeWeight(10 * SCALE);
+
+				textAlign(CENTER, CENTER);
+				textFont('Google Sans Code');
+				textSize(70 * SCALE);
+
+				text(String(score).padStart(4, '0'), WIDTH/2, 59 * SCALE);
+
+				pop();
 			}
 
 			return function () {
