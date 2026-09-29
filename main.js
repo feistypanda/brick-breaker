@@ -126,8 +126,8 @@ const player = (() => {
 		}
 
 		handleMovement (keys) {
-			if (keys.a) this.velocity.x -= this.speed;
-			if (keys.d) this.velocity.x += this.speed;
+			if (keys.a || keys.arrowleft) this.velocity.x -= this.speed;
+			if (keys.d || keys.arrowright) this.velocity.x += this.speed;
 		}
 
 		applyVelocity () {
@@ -244,46 +244,46 @@ const ball = (() => {
 			if (yb) this.position.y = HEIGHT - s;
 		}
 
+		setVelForAngle (angle) {
+			this.velocity.x = cos(angle) * this.speed;
+			this.velocity.y = sin(angle) * this.speed;
+		}
+
 		bounceOffBox (box) {
 			// Only continue if we are colliding
-			if (!AABB(this, player)) return false;
+			if (!AABB(this, box)) return false;
 
 			let bounce = {};
 
 			// Bounce off of top
-			if (this.lastY + this.size/2 < player.y - player.height/2) {
-				this.position.y = player.y - player.height/2 - this.size/2;
+			if (this.lastY + this.size/2 < box.y - box.height/2) {
+				this.position.y = box.y - box.height/2 - this.size/2;
 				this.velocity.y *= -1;
 				bounce.top = true;
 			}
 
 			// Bounce off of bottom
-			if (this.lastY - this.size/2 > player.y + player.height/2) {
-				this.position.y = player.y + player.height/2 + this.size/2;
+			if (this.lastY - this.size/2 > box.y + box.height/2) {
+				this.position.y = box.y + box.height/2 + this.size/2;
 				this.velocity.y *= -1;
 				bounce.bottom = true;
 			}
 
 			// Bounce off of left
-			if (this.lastX + this.size/2 < player.x - player.width/2) {
-				this.position.x = player.x - player.width/2 - this.size/2;
+			if (this.lastX + this.size/2 < box.x - box.width/2) {
+				this.position.x = box.x - box.width/2 - this.size/2;
 				this.velocity.x *= -1;
 				bounce.left = true;
 			}
 
 			// Bounce off of right
-			if (this.lastX - this.size/2 > player.x + player.width/2) {
-				this.position.x = player.x + player.width/2 + this.size/2;
+			if (this.lastX - this.size/2 > box.x + box.width/2) {
+				this.position.x = box.x + box.width/2 + this.size/2;
 				this.velocity.x *= -1;
 				bounce.right = true;
 			}
 
 			return bounce;
-		}
-
-		setVelForAngle (angle) {
-			this.velocity.x = cos(angle) * this.speed;
-			this.velocity.y = sin(angle) * this.speed;
 		}
 
 		bounceOffPlayer (player) {
@@ -294,6 +294,12 @@ const ball = (() => {
 
 				if (player.velocity.x > 0) this.setVelForAngle(Math.min(curAngle + PI/20, -PI/8));
 				else if (player.velocity.x < 0) this.setVelForAngle(Math.max(curAngle - PI/20, -7 * PI/8));
+			}
+		}
+		
+		bounceOffBricks (bricks) {
+			for (const i of bricks.bricks) {
+				if (this.bounceOffBox(i)) i.dead = true;
 			}
 		}
 
@@ -307,6 +313,7 @@ const ball = (() => {
 			this.applyVelocity();
 			this.bounceOffEdges();
 			this.bounceOffPlayer(data.player);
+			this.bounceOffBricks(data.bricks);
 		}
 
 		display () {
@@ -381,7 +388,7 @@ const bricks = (() => {
 
 			for (let i = 0; i < 4; i ++) {
 				
-				let y = i * (brickHeight + brickGap) + brickGap + brickHeight/2;
+				let y = (i + 1.5) * (brickHeight + brickGap) + brickGap + brickHeight/2;
 
 				for (let j = 0; j < maxBricks; j ++) {
 
@@ -715,7 +722,7 @@ const scenes = (() => {
 
 			function play () {
 				player.run({ keys });
-				ball.run({ player });
+				ball.run({ player, bricks });
 				bricks.run();
 			}
 
