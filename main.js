@@ -217,6 +217,8 @@ const ball = (() => {
 			this.position.x = WIDTH / 2;
 			this.position.y = HEIGHT / 2;
 
+			this.hitBottom = false;
+
 			this.startInRandomDirection();
 		}
 
@@ -245,6 +247,9 @@ const ball = (() => {
 			if (xb) this.position.x = WIDTH - s;
 			if (ys) this.position.y = s;
 			if (yb) this.position.y = HEIGHT - s;
+
+			// Loose a life
+			if (yb) this.hitBottom = true;
 		}
 
 		setVelForAngle (angle) {
@@ -295,8 +300,8 @@ const ball = (() => {
 			if (res && res.top) {
 				const curAngle = Math.atan2(this.velocity.y, this.velocity.x);
 
-				if (player.velocity.x > 0) this.setVelForAngle(Math.min(curAngle + PI/20, -PI/8));
-				else if (player.velocity.x < 0) this.setVelForAngle(Math.max(curAngle - PI/20, -7 * PI/8));
+				if (player.velocity.x > 0.2) this.setVelForAngle(Math.min(curAngle + PI/20, -PI/8));
+				else if (player.velocity.x < 0.2) this.setVelForAngle(Math.max(curAngle - PI/20, -7 * PI/8));
 			}
 		}
 		
@@ -390,7 +395,7 @@ const bricks = (() => {
 		reset () {
 			this.clear();
 
-			const maxBricks = WIDTH / (brickWidth + brickGap + 1);
+			const maxBricks = WIDTH / (brickWidth + brickGap + 1) - 1;
 
 			for (let i = 0; i < 4; i ++) {
 				
@@ -511,13 +516,26 @@ const scenes = (() => {
 			const transitionFunctions = (() => {
 				const anim1 = x => 4 *(x - 0.5) ** 3 + 0.5;
 
-				return {
-					slide (amt, color) {
-						fill(color);
-						noStroke();
-						rect(-WIDTH + WIDTH * anim1(amt) * 2, 0, WIDTH, HEIGHT);
+				return { 
+
+					functions: {
+						slide (amt, color) {
+							fill(color);
+							noStroke();
+							rect(-WIDTH + WIDTH * anim1(amt) * 2, 0, WIDTH, HEIGHT);
+						},
+
+						wait (amt, color) {
+							let newAmt = amt < 0.4 ? 0 : (amt - 0.4) * 1.666667;
+							this.slide(newAmt, color);
+						},
 					},
-				}
+
+					midPoints: {
+						slide: 0.5,
+						wait: 0.7,
+					}
+				};
 			})();
 
 			const resetData = (() => {
@@ -567,7 +585,7 @@ const scenes = (() => {
 
 					if (typeof data.type !== "string") errors.push("invalid data.type");
 
-					if (!Object.keys(transitionFunctions).includes(data.type)) errors.push("invalid data.type");
+					if (!Object.keys(transitionFunctions.functions).includes(data.type)) errors.push("invalid data.type");
 
 					if (errors.length === 0) return { success: true };
 					else return { errors };
@@ -578,7 +596,7 @@ const scenes = (() => {
 				return function (amt, data) {
 					
 					// Display image from last scene
-					if (amt < 0.5) image(data.image, 0, 0, WIDTH, HEIGHT);
+					if (amt < transitionFunctions.midPoints[data.type] ?? 0.5) image(data.image, 0, 0, WIDTH, HEIGHT);
 
 					// Run the next scene
 					else if (amt < 1) scenes[data.to]();
@@ -594,8 +612,10 @@ const scenes = (() => {
 
 					push();
 
-					for (const i in transitionFunctions) if (data.type === i) {
-						transitionFunctions[i](amt, data.color);
+					const functions = transitionFunctions.functions;
+
+					for (const i in functions) if (data.type === i) {
+						functions[i](amt, data.color);
 						break;
 					}
 
@@ -715,9 +735,13 @@ const scenes = (() => {
 			}
 
 			function start () {
+				reset();
+				bricks.reset();
+			}
+
+			function reset () {
 				player.reset();
 				ball.reset();
-				bricks.reset();
 			}
 
 			function wait () {
@@ -726,6 +750,7 @@ const scenes = (() => {
 				bricks.run();
 
 				displayScore();
+				displayLives();
 			}
 
 			function play () {
@@ -733,7 +758,17 @@ const scenes = (() => {
 				ball.run({ player, bricks });
 				bricks.run();
 
+				if (ball.hitBottom) {
+					lives --;
+					reset();
+					switchState("waiting");
+				}
+
 				displayScore();
+				displayLives();
+
+				if (lives < 1) scenes.transition({ to: "dead", type: "wait", speed: 3 })
+				else if (bricks.bricks.length <= 0) scenes.transition({ to: "win", type: "wait", speed: 3 });
 			}
 
 			function displayScore () {
@@ -752,6 +787,29 @@ const scenes = (() => {
 				pop();
 			}
 
+			const displayLives = (() => {
+
+				const offset = 50 * SCALE;
+				const increment = 70 * SCALE;
+				const size = 50 * SCALE;
+
+				return function () {
+					push();
+
+					stroke(colors.white);
+					strokeWeight(4 * SCALE);
+
+					for (let i = 0; i < 3; i ++) {
+						if (i + 1 < lives) fill(colors.white);
+						else noFill();
+
+						circle(offset + i * increment, offset, size);
+					}
+
+					pop();
+				}
+			})();
+
 			return function () {
 				background(colors.black);
 
@@ -760,6 +818,40 @@ const scenes = (() => {
 				else if (state.state === "play") play();
 
 				handleState();
+			}
+		})(),
+
+		dead: (() => {
+			return function () {
+				push();
+
+				background(colors.black);
+				fill(colors.white);
+				
+				textFont("Google Sans");
+				textSize(100 * SCALE);
+				textAlign(CENTER, CENTER);
+
+				text("YOU DIED", WIDTH/2, 400 * SCALE);
+
+				pop();
+			}
+		})(),
+
+		win: (() => {
+			return function () {
+				push();
+
+				background(colors.black);
+				fill(colors.white);
+				
+				textFont("Google Sans");
+				textSize(100 * SCALE);
+				textAlign(CENTER, CENTER);
+
+				text("YOU WON!", WIDTH/2, 400 * SCALE);
+
+				pop();
 			}
 		})(),
 	};
