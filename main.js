@@ -86,6 +86,108 @@ const Vector = (() => {
 	return Vector
 })();
 
+const buttons = (() => {
+	
+	// Default properties for buttons
+	let defaults = {
+
+	};
+
+	class Button {
+		constructor (config) {
+
+			this.scene = config.scene ?? null;
+
+			this.x = config.x ?? 0;
+			this.y = config.y ?? 0;
+			this.width = config.width ?? defaults.width ?? 20;
+			this.height = config.height ?? defaults.height ?? 20;
+
+			this.fillColor = config.fillColor ?? defaults.fillColor ?? color(255);
+
+			this.borderColor = config.borderColor ?? defaults.borderColor ?? color(0);
+			this.borderWeight = config.borderWeight ?? defaults.borderWeight ?? 1;
+			this.borderRadius = config.borderRadius ?? defaults.borderRadius ?? 0;
+
+			this.text = config.text ?? "";
+			this.textColor = config.textColor ?? defaults.textColor ?? color(0);
+			this.textSize = config.textSize ?? defaults.textSize ?? 10;
+			this.textFont = config.textFont ?? defaults.textFont ?? "Sans Serif";
+
+			if (typeof config.onClick !== "function") throw "onClick is required";
+			this.onClick = config.onClick;
+		}
+
+		mouseOver (x, y) {
+			return x > this.x - this.width/2 &&
+				   x < this.x + this.width/2 &&
+				   y > this.y - this.height/2 &&
+				   y < this.y + this.height/2;
+		}
+
+		display () {
+			push();
+
+			fill(this.fillColor);
+			stroke(this.borderColor);
+			strokeWeight(this.borderWeight);
+
+			rect(this.x - this.width/2, this.y - this.height/2, this.width, this.height, this.borderRadius);
+
+			noStroke();
+			fill(this.textColor);
+			textSize(this.textSize);
+			textFont(this.textFont);
+			textAlign(CENTER, CENTER);
+
+			text(this.text, this.x, this.y);
+
+			pop();
+		}
+
+		handleHoverEffects (data) {
+			// Not Implemented
+		}
+
+		handleClick (data) {
+			if (data.click && this.mouseOver(data.mouseX, data.mouseY)) this.onClick();
+		}
+
+		update (data) {
+			this.handleHoverEffects(data);
+			this.handleClick(data)
+		}
+
+		run (data) {
+			this.update(data);
+			this.display(data);
+		}
+	}
+
+	const buttons = {
+		buttons: [],
+
+		run (data) {
+			for (const i of this.buttons) {
+				if (scenes.currentScene === i.scene || scenes.nextScene === i.scene) i.run(data);
+			}
+		},
+
+		add (config) {
+			const btn = new Button(config);
+			this.buttons.push(btn);
+			return btn;
+		}
+	};
+
+	buttons.add({
+		scene: "dead",
+		onClick: function () {},
+	})
+
+	return buttons;
+})();
+
 const player = (() => {
 
 	const calculateTopSpeed = (speed, drag) => (speed * drag) / (1 - drag)
@@ -416,7 +518,7 @@ const bricks = (() => {
 
 const scenes = (() => {
 
-	const sceneAfterLoading = "play";
+	const sceneAfterLoading = "dead";
 	
 	let nextTransitionData = { transition: false };
 
@@ -828,13 +930,19 @@ const scenes = (() => {
 				background(colors.black);
 				fill(colors.white);
 				
-				textFont("Google Sans");
-				textSize(100 * SCALE);
+				textFont("Anton");
+				textSize(150 * SCALE);
 				textAlign(CENTER, CENTER);
 
-				text("YOU DIED", WIDTH/2, 400 * SCALE);
+				text("YOU LOST!", WIDTH/2, 210 * SCALE);
+
+				textSize(60 * SCALE);
+
+				text(`Score: ${score}`, WIDTH/2, 400 * SCALE);
 
 				pop();
+
+				buttons.run({ mouseX, mouseY, click });
 			}
 		})(),
 
