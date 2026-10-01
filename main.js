@@ -1,4 +1,6 @@
 
+const init = () => {
+
 const [WIDTH, HEIGHT, SCALE] = (() => {
 
 	const [EXPECTED_WIDTH, EXPECTED_HEIGHT] = [1200, 800];
@@ -32,6 +34,12 @@ const colors = {
 	black: color(25, 20, 20),
 	lightBlack: color(35, 25, 25),
 	white: color(200),
+
+	red: color(202, 66, 62),
+	green: color(59, 133, 75),
+	orange: color(237, 129, 35),
+	blue: color(87, 132, 230),
+	yellow: color(236, 196, 68),
 };
 
 let click = false;
@@ -39,13 +47,44 @@ let keys = {};
 
 let score = 0;
 let lives = 3;
+let mode = 2;
+
+const highScoreLocalStorageKey = "60f3f0fc-3733-4228-98cc-0c5f8f3fa8e4-brick-breaker-high-score";
+
+let highScore = (() => {
+	let stored = localStorage.getItem(highScoreLocalStorageKey);
+
+	if (stored) return stored;
+
+	localStorage.setItem(highScoreLocalStorageKey, 0);
+
+	return 0;
+})();
 
 const copyObj = obj => JSON.parse(JSON.stringify(obj));
+const padScore = score => String(score).padStart(5, '0');
 
 const images = (() => {
 
 	const images = {
+		title () {
 
+			const g = createGraphics(WIDTH, HEIGHT);
+
+			g.noStroke();
+			g.fill(colors.white);
+			g.textFont("Anton");
+			g.textSize(150 * SCALE);
+			g.textAlign(CENTER, CENTER);
+
+			g.text("BREAK   UT!", 600 * SCALE, 400 * SCALE);
+
+			g.noStroke();
+			g.fill(colors.red)
+			g.rect(662 * SCALE, 317 * SCALE, 70 * SCALE, 120 * SCALE);
+
+			return g.get();
+		},
 	};
 
 	return images;
@@ -90,13 +129,33 @@ const buttons = (() => {
 	
 	// Default properties for buttons
 	let defaults = {
-
+		textFont: "Anton",
+		textSize: 40 * SCALE,
+		textColor: colors.black,
+		fillColor: colors.white,
+		borderWeight: 0,
+		hoverEffect: "stretch"
 	};
+
+	const hoverEffects = (() => {
+		const easeIn = x => - ((x - 1) ** 2) + 1;
+
+		return {
+			stretch (button, amt, dir) {
+				let change = 20 * SCALE;
+
+				if (dir > 0) button.width = button.originals.width + change * easeIn(amt);
+				else button.width = button.originals.width + change - change * easeIn(1 - amt);
+			},
+		}
+	})();
 
 	class Button {
 		constructor (config) {
 
-			this.scene = config.scene ?? null;
+			if (config.scene == null) throw "scene is required";
+			this.scene = config.scene;
+			this.scenes = config.scenes ?? [];
 
 			this.x = config.x ?? 0;
 			this.y = config.y ?? 0;
@@ -113,9 +172,20 @@ const buttons = (() => {
 			this.textColor = config.textColor ?? defaults.textColor ?? color(0);
 			this.textSize = config.textSize ?? defaults.textSize ?? 10;
 			this.textFont = config.textFont ?? defaults.textFont ?? "Sans Serif";
+			this.textYOffset = config.textYOffset ?? 0;
 
 			if (typeof config.onClick !== "function") throw "onClick is required";
 			this.onClick = config.onClick;
+
+			// Keep start state for hover effects
+			this.originals = {
+				width: this.width,
+			};
+
+			this.hoverEffect = config.hoverEffect ?? defaults.hoverEffect ?? false;
+			this.hoverProgress = 0;
+
+			if (this.hoverEffect) this.hoverFunc = hoverEffects[this.hoverEffect];
 		}
 
 		mouseOver (x, y) {
@@ -140,13 +210,22 @@ const buttons = (() => {
 			textFont(this.textFont);
 			textAlign(CENTER, CENTER);
 
-			text(this.text, this.x, this.y);
+			text(this.text, this.x, this.y + this.textYOffset);
 
 			pop();
 		}
 
 		handleHoverEffects (data) {
-			// Not Implemented
+			if (this.mouseOver(data.mouseX, data.mouseY)) {
+
+				this.hoverProgress = Math.min(this.hoverProgress + 0.05, 1);
+				this.hoverFunc(this, this.hoverProgress, 1);
+
+			} else if (this.hoverProgress > 0) {
+
+				this.hoverProgress = Math.max(this.hoverProgress - 0.05, 0);
+				this.hoverFunc(this, this.hoverProgress, -1);
+			}
 		}
 
 		handleClick (data) {
@@ -169,7 +248,12 @@ const buttons = (() => {
 
 		run (data) {
 			for (const i of this.buttons) {
-				if (scenes.currentScene === i.scene || scenes.nextScene === i.scene) i.run(data);
+				if (
+					scenes.currentScene === i.scene || 
+					scenes.nextScene === i.scene || 
+					i.scenes.includes(scenes.currentScene) ||
+					i.scenes.includes(scenes.nextScene)
+					) i.run(data);
 			}
 		},
 
@@ -177,12 +261,130 @@ const buttons = (() => {
 			const btn = new Button(config);
 			this.buttons.push(btn);
 			return btn;
-		}
+		},
+
+		getByText (text) {
+			for (const i of this.buttons) {
+				if (i.text === text) return i;
+			}
+		},
 	};
 
 	buttons.add({
 		scene: "dead",
-		onClick: function () {},
+		scenes: ["win", "how", "mode"],
+		x: 420 * SCALE,
+		y: 550 * SCALE,
+		width: 250 * SCALE,
+		height: 110 * SCALE,
+		textSize: 100 * SCALE,
+		textYOffset: 15 * SCALE,
+		text: "HOME",
+		onClick: function () {
+			scenes.transition({ to: "home" });
+		},
+	})
+
+	buttons.add({
+		scene: "dead",
+		scenes: ["win", "how", "mode"],
+		x: 780 * SCALE,
+		y: 550 * SCALE,
+		width: 250 * SCALE,
+		height: 110 * SCALE,
+		textSize: 100 * SCALE,
+		textYOffset: 15 * SCALE,
+		text: "PLAY",
+		onClick: function () {
+			scenes.transition({ to: "play", sceneData: { reset: true } });
+		},
+	})
+
+	buttons.add({
+		scene: "home",
+		x: 300 * SCALE,
+		y: 550 * SCALE,
+		width: 250 * SCALE,
+		height: 140 * SCALE,
+		textSize: 100 * SCALE,
+		textYOffset: 15 * SCALE,
+		fillColor: colors.blue,
+		text: "HOW",
+		onClick: function () {
+			scenes.transition({ to: "how" });
+		},
+	})
+
+	buttons.add({
+		scene: "home",
+		x: 600 * SCALE,
+		y: 550 * SCALE,
+		width: 250 * SCALE,
+		height: 140 * SCALE,
+		textSize: 100 * SCALE,
+		textYOffset: 15 * SCALE,
+		fillColor: colors.yellow,
+		text: "PLAY",
+		onClick: function () {
+			scenes.transition({ to: "play", sceneData: { reset: true } });
+		},
+	})
+
+	buttons.add({
+		scene: "home",
+		x: 900 * SCALE,
+		y: 550 * SCALE,
+		width: 250 * SCALE,
+		height: 140 * SCALE,
+		textSize: 100 * SCALE,
+		textYOffset: 15 * SCALE,
+		fillColor: colors.green,
+		text: "MODE",
+		onClick: function () {
+			scenes.transition({ to: "mode" });
+		},
+	})
+
+	buttons.add({
+		scene: "mode",
+		x: 300 * SCALE,
+		y: 380 * SCALE,
+		width: 250 * SCALE,
+		height: 110 * SCALE,
+		textSize: 100 * SCALE,
+		textYOffset: 15 * SCALE,
+		text: "EASY",
+		onClick: function () {
+			mode = 1;
+		},
+	})
+
+	buttons.add({
+		scene: "mode",
+		x: 600 * SCALE,
+		y: 380 * SCALE,
+		width: 250 * SCALE,
+		height: 110 * SCALE,
+		textSize: 100 * SCALE,
+		textYOffset: 15 * SCALE,
+		text: "MED",
+		onClick: function () {
+			mode = 2;
+		},
+	})
+
+	buttons.add({
+		scene: "mode",
+		x: 900 * SCALE,
+		y: 380 * SCALE,
+		width: 250 * SCALE,
+		height: 110 * SCALE,
+		textSize: 100 * SCALE,
+		textYOffset: 15 * SCALE,
+		text: "HARD",
+		onClick: function () {
+			mode = 3;
+		},
 	})
 
 	return buttons;
@@ -316,6 +518,7 @@ const ball = (() => {
 		}
 
 		reset () {
+			this.speed = (5 + 3 * mode) * SCALE;
 			this.position.x = WIDTH / 2;
 			this.position.y = HEIGHT / 2;
 
@@ -411,7 +614,7 @@ const ball = (() => {
 			for (const i of bricks.bricks) {
 				if (this.bounceOffBox(i) && !i.dead) {
 					i.dead = true;
-					score += i.level * 50 + 50;
+					score += (i.level * 50 + 50) * mode;
 				}
 			}
 		}
@@ -443,7 +646,7 @@ const ball = (() => {
 
 const bricks = (() => {
 
-	const brickColors = [color(59, 133, 75), color(236, 196, 68), color(202, 66, 62), color(87, 132, 230)];
+	const brickColors = [colors.red, colors.orange, colors.yellow, colors.green];
 
 	const brickWidth = 109 * SCALE;
 	const brickHeight = 50 * SCALE;
@@ -497,7 +700,7 @@ const bricks = (() => {
 		reset () {
 			this.clear();
 
-			const maxBricks = WIDTH / (brickWidth + brickGap + 1) - 1;
+			const maxBricks = 10;
 
 			for (let i = 0; i < 4; i ++) {
 				
@@ -518,7 +721,7 @@ const bricks = (() => {
 
 const scenes = (() => {
 
-	const sceneAfterLoading = "dead";
+	const sceneAfterLoading = "home";
 	
 	let nextTransitionData = { transition: false };
 
@@ -606,6 +809,8 @@ const scenes = (() => {
 
 				dataOut.color = data.color ?? scenes.defaults.colors.transition;
 
+				dataOut.sceneData = data.sceneData ?? {};
+
 				dataOut.transition = true;
 			}			
 		})(),
@@ -614,6 +819,7 @@ const scenes = (() => {
 
 			let amt = 0;
 			let data;
+			let sentSceneData = false;
 
 			const transitionFunctions = (() => {
 				const anim1 = x => 4 *(x - 0.5) ** 3 + 0.5;
@@ -660,6 +866,7 @@ const scenes = (() => {
 
 					// Reset data for the transition
 					amt = 0;
+					sentSceneData = false;
 					data = copyData(_data);
 					nextScene = data.to;
 					currentScene = "runTransition";
@@ -701,7 +908,11 @@ const scenes = (() => {
 					if (amt < transitionFunctions.midPoints[data.type] ?? 0.5) image(data.image, 0, 0, WIDTH, HEIGHT);
 
 					// Run the next scene
-					else if (amt < 1) scenes[data.to]();
+					else if (amt < 1 && sentSceneData) scenes[data.to]();
+					else if (amt < 1) {
+						scenes[data.to](data.sceneData);
+						sentSceneData = true;
+					}
 					
 					// Switch to next scene
 					else currentScene = data.to;
@@ -839,6 +1050,8 @@ const scenes = (() => {
 			function start () {
 				reset();
 				bricks.reset();
+				score = 0;
+				lives = 3;
 			}
 
 			function reset () {
@@ -869,8 +1082,17 @@ const scenes = (() => {
 				displayScore();
 				displayLives();
 
-				if (lives < 1) scenes.transition({ to: "dead", type: "wait", speed: 3 })
-				else if (bricks.bricks.length <= 0) scenes.transition({ to: "win", type: "wait", speed: 3 });
+				// Update high score
+				let won = bricks.bricks.length <= 0;
+				let lost = lives < 1;
+
+				if ((won || lost) && score > highScore) {
+					highScore = score;
+					localStorage.setItem(highScoreLocalStorageKey, highScore);
+				}
+
+				if (lost) scenes.transition({ to: "dead", type: "wait", speed: 3 })
+				else if (won) scenes.transition({ to: "win", type: "wait", speed: 3 });
 			}
 
 			function displayScore () {
@@ -884,7 +1106,7 @@ const scenes = (() => {
 				textFont('Google Sans Code');
 				textSize(70 * SCALE);
 
-				text(String(score).padStart(4, '0'), WIDTH/2, 59 * SCALE);
+				text(padScore(score), WIDTH/2, 59 * SCALE);
 
 				pop();
 			}
@@ -912,8 +1134,10 @@ const scenes = (() => {
 				}
 			})();
 
-			return function () {
+			return function (data) {
 				background(colors.black);
+
+				if (data && data.reset) switchState("start");
 
 				if (state.state === "start") start();
 				else if (state.state === "waiting") wait(); 
@@ -953,13 +1177,99 @@ const scenes = (() => {
 				background(colors.black);
 				fill(colors.white);
 				
-				textFont("Google Sans");
-				textSize(100 * SCALE);
+				textFont("Anton");
+				textSize(150 * SCALE);
 				textAlign(CENTER, CENTER);
 
-				text("YOU WON!", WIDTH/2, 400 * SCALE);
+				text("YOU WON!", WIDTH/2, 210 * SCALE);
+
+				textSize(60 * SCALE);
+
+				text(`Score: ${score}`, WIDTH/2, 400 * SCALE);
 
 				pop();
+
+				buttons.run({ mouseX, mouseY, click });
+			}
+		})(),
+
+		how: (() => {
+			return function () {
+				push();
+
+				background(colors.black);
+				fill(colors.white);
+				
+				textFont("Anton");
+				textSize(150 * SCALE);
+				textAlign(CENTER, CENTER);
+
+				text("HOW TO PLAY", WIDTH/2, 210 * SCALE);
+
+				textSize(40 * SCALE);
+				textFont("Google Sans")
+
+				text("WASD or ARROWS to move,\nBounce the ball to break the blocks!!", WIDTH/2, 380 * SCALE);
+
+				pop();
+
+				buttons.run({ mouseX, mouseY, click });
+			}
+		})(),
+
+		mode: (() => {
+
+			const easy = buttons.getByText("EASY");
+			const med = buttons.getByText("MED");
+			const hard = buttons.getByText("HARD");
+
+			const btns = [easy, med, hard];
+
+			return function () {
+				push();
+
+				background(colors.black);
+				fill(colors.white);
+				
+				textFont("Anton");
+				textSize(150 * SCALE);
+				textAlign(CENTER, CENTER);
+
+				text("CHANGE MODE", WIDTH/2, 210 * SCALE);
+
+				noStroke();
+				fill(colors.blue);
+
+				let x = 300 * SCALE * mode;
+				let y = 380 * SCALE;
+				let width = btns[mode - 1].width + 10;
+				let height = 120 * SCALE;
+
+				rect(x - width/2, y - height/2, width, height);
+
+				pop();
+
+				buttons.run({ mouseX, mouseY, click });
+			}
+		})(),
+
+		home: (() => {
+			return function () {
+				push();
+
+				background(colors.black);
+				fill(colors.white);
+				
+				image(images.title, 0, -200 * SCALE);
+
+				textFont("Google Sans Code");
+				textSize(60 * SCALE);
+				textAlign(CENTER, CENTER);
+				text(padScore(highScore), WIDTH/2, 370 * SCALE);
+
+				pop();
+
+				buttons.run({ mouseX, mouseY, click });
 			}
 		})(),
 	};
@@ -1020,3 +1330,11 @@ const userInput = (() => {
 		keys[key] = keys[key.toString().toLowerCase()] = false;
 	}
 })();
+
+}
+
+Promise.all([
+	document.fonts.load('400 1em "Anton"'),
+	document.fonts.load('400 1em "Google Sans"'),
+	document.fonts.load('400 1em "Google Sans Code"'),
+]).then(init);
