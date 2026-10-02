@@ -63,6 +63,35 @@ let highScore = (() => {
 
 const copyObj = obj => JSON.parse(JSON.stringify(obj));
 const padScore = score => String(score).padStart(5, '0');
+const AABB = (a, b) => a.x + a.width  / 2 > b.x - b.width  / 2 &&
+						   b.x + b.width  / 2 > a.x - a.width  / 2 && 
+						   a.y + a.height / 2 > b.y - b.height / 2 &&
+						   b.y + b.height / 2 > a.y - a.height / 2;
+const randomArrayInd = (arr) => Math.floor(Math.random() * arr.length);
+
+let useAudio = false;
+playMusic = function () {
+    var audio = new Audio('music.mp3');
+    audio.loop = true;
+    audio.volume = 0.4;
+    audio.play(); 
+}
+
+function playSoundEffect (name) {
+	if (!useAudio) return;
+	var audio = new Audio(name);
+	audio.loop = false;
+	audio.volume = 1;
+	audio.play();
+}
+
+function playExplosion () {
+	playSoundEffect("explode.mp3");
+}
+
+function playBounce () {
+	playSoundEffect("bounce.mp3");
+}
 
 const images = (() => {
 
@@ -82,6 +111,81 @@ const images = (() => {
 			g.noStroke();
 			g.fill(colors.red)
 			g.rect(662 * SCALE, 317 * SCALE, 70 * SCALE, 120 * SCALE);
+
+			return g.get();
+		},
+
+		healthUpgrade () {
+			const g = createGraphics(600, 600);
+			g.noStroke();
+			g.fill(colors.white);
+			g.rect(0, 220, 600, 160);
+			g.rect(220, 0, 160, 600);
+
+			return g.get();
+		},
+
+		healthIcon () {
+			const g = createGraphics(600, 600);
+			g.noStroke();
+			g.fill(255, 70);
+			g.rect(0, 220, 600, 160);
+			g.rect(220, 0, 160, 220);
+			g.rect(220, 380, 160, 220);
+
+			return g.get();
+		},
+
+		tntUpgrade () {
+			const g = createGraphics(600, 600);
+			g.noStroke();
+			g.fill(colors.white);
+			g.beginShape();
+
+			for (var i = PI/2; i < PI * 1.4; i += PI/20) {
+			    g.vertex(300 + cos(i) * 200, 300 + sin(i) * 200);
+			}
+
+			g.vertex(250, 60);
+			g.vertex(350, 60);
+
+			for (var i = PI * 1.65; i < PI * 5/2; i += PI/20) {
+			    g.vertex(300 + cos(i) * 200, 300 + sin(i) * 200);
+			}
+
+			g.endShape(CLOSE);
+
+			g.stroke(colors.white);
+			g.noFill();
+			g.strokeWeight(20);
+			g.arc(350, 55, 100, 90, Math.PI, Math.PI * 1.8);
+
+			return g.get();
+		},
+
+		tntIcon () {
+			const g = createGraphics(600, 600);
+			g.noStroke();
+			g.fill(255, 70);
+			g.beginShape();
+
+			for (var i = PI/2; i < PI * 1.4; i += PI/20) {
+			    g.vertex(300 + cos(i) * 200, 300 + sin(i) * 200);
+			}
+
+			g.vertex(250, 60);
+			g.vertex(350, 60);
+
+			for (var i = PI * 1.65; i < PI * 5/2; i += PI/20) {
+			    g.vertex(300 + cos(i) * 200, 300 + sin(i) * 200);
+			}
+
+			g.endShape(CLOSE);
+
+			g.stroke(255, 70);
+			g.noFill();
+			g.strokeWeight(20);
+			g.arc(350, 55, 100, 90, Math.PI, Math.PI * 1.8);
 
 			return g.get();
 		},
@@ -301,6 +405,36 @@ const buttons = (() => {
 	})
 
 	buttons.add({
+		scene: "audio",
+		x: 420 * SCALE,
+		y: 550 * SCALE,
+		width: 250 * SCALE,
+		height: 110 * SCALE,
+		textSize: 100 * SCALE,
+		textYOffset: 15 * SCALE,
+		text: "NO",
+		onClick: function () {
+			scenes.transition({ to: "home" });
+		},
+	})
+
+	buttons.add({
+		scene: "audio",
+		x: 780 * SCALE,
+		y: 550 * SCALE,
+		width: 250 * SCALE,
+		height: 110 * SCALE,
+		textSize: 100 * SCALE,
+		textYOffset: 15 * SCALE,
+		text: "YES",
+		onClick: function () {
+			playMusic();
+			useAudio = true;
+			scenes.transition({ to: "home" });
+		},
+	})
+
+	buttons.add({
 		scene: "home",
 		x: 300 * SCALE,
 		y: 550 * SCALE,
@@ -488,10 +622,91 @@ const particles = (() => {
 			} else {
 				this.particles.push(new Particle(config));
 			}
-		}
+		},
+
+		reset () {
+			this.particles = [];
+		},
 	};
 
 	return particles;
+})();
+
+const powerups = (() => {
+
+	const powerupFunctions = {
+		health () {
+			lives ++;
+		},
+		tnt () {
+			console.log("boom");
+		},
+	};
+
+	class Powerup {
+		constructor (config) {
+			this.x = config.x;
+			this.y = config.y;
+
+			this.type = config.type;
+
+			this.size = 30 * SCALE;
+
+			this.dead = false;
+
+			this.onUsed = powerupFunctions[this.type];
+		}
+
+		update (player) {
+			this.y += 2;
+
+			if (AABB(player, {x: this.x, y: this.y, width: this.size, height: this.size})) {
+				this.onUsed();
+				this.dead = true;
+			}
+		}
+
+		display () {
+			push();
+
+			switch (this.type) {
+			case "health":
+				image(images.healthUpgrade, this.x - this.size/2, this.y - this.size/2, this.size, this.size);
+				break;
+			case "tnt":
+				image(images.tntUpgrade, this.x - this.size/2, this.y - this.size/2, this.size, this.size);
+				break;
+			}
+
+			pop();
+		}
+
+		run (data) {
+			this.update(data.player);
+			this.display();
+			return this.dead;
+		}
+	}
+
+	const powerups = {
+		powerups: [],
+
+		run (data) {
+			for (var i = this.powerups.length - 1; i >= 0; i--) {
+				if (this.powerups[i].run(data)) this.powerups.splice(i, 1);
+			}
+		},
+
+		add (config) {
+			this.powerups.push(new Powerup(config));
+		},
+
+		reset () {
+			this.powerups = [];
+		},
+	};
+
+	return powerups;
 })();
 
 const player = (() => {
@@ -583,11 +798,6 @@ const player = (() => {
 })();
 
 const ball = (() => {
-
-	const AABB = (a, b) => a.x + a.width  / 2 > b.x - b.width  / 2 &&
-						   b.x + b.width  / 2 > a.x - a.width  / 2 && 
-						   a.y + a.height / 2 > b.y - b.height / 2 &&
-						   b.y + b.height / 2 > a.y - a.height / 2;
 
 	class Ball {
 		constructor (config) {
@@ -707,6 +917,7 @@ const ball = (() => {
 			const res = this.bounceOffBox(player);
 
 			if (res && res.top) {
+				playBounce();
 				const curAngle = Math.atan2(this.velocity.y, this.velocity.x);
 
 				if (player.velocity.x > 0.2) this.setVelForAngle(Math.min(curAngle + PI/20, -PI/8));
@@ -717,8 +928,9 @@ const ball = (() => {
 		bounceOffBricks (bricks) {
 			for (const i of bricks.bricks) {
 				if (this.bounceOffBox(i) && !i.dead) {
+					playExplosion();
+					
 					i.dead = true;
-					score += (i.level * 50 + 50) * mode;
 				}
 			}
 		}
@@ -765,6 +977,8 @@ const bricks = (() => {
 
 			this.level = config.level ?? 0;
 			this.dead = false;
+
+			this.powerup = config.powerup ?? false;
 		}
 
 		run () {
@@ -780,6 +994,16 @@ const bricks = (() => {
 
 			rect(this.x - this.width/2, this.y - this.height/2, this.width, this.height);
 
+			if (this.powerup) {
+				switch (this.powerup) {
+				case "health":
+					image(images.healthIcon, this.x - 15 * SCALE, this.y - 15 * SCALE, 30 * SCALE, 30 * SCALE);
+					break;
+				case "tnt":
+					image(images.tntIcon, this.x - 15 * SCALE, this.y - 15 * SCALE, 30 * SCALE, 30 * SCALE);
+				}
+			}
+
 			pop();
 		}
 	}
@@ -792,6 +1016,33 @@ const bricks = (() => {
 				if (this.bricks[i].run()) {
 
 					let brick = this.bricks[i];
+
+					score += (brick.level * 50 + 50) * mode;
+
+					if (brick.powerup) {
+						if (brick.powerup === "health") {
+							powerups.add({ x: brick.x, y: brick.y, type: brick.powerup });
+						} else if (brick.powerup === "tnt") {
+
+							// blow up 3 closest bricks
+							for (let j = 0; j < 3; j ++) {
+								let closestDist = Infinity;
+								let closestBrick;
+
+								for (const brick2 of this.bricks) {
+									let dist = (brick2.x - brick.x) ** 2 + (brick2.y - brick.y) ** 2
+									if (dist < closestDist && !brick2.dead) {
+										closestDist = dist;
+										closestBrick = brick2;
+									}
+								}
+
+								if (closestBrick) {
+									closestBrick.dead = true;
+								}
+							}
+						}
+					}
 
 					// Particle effect
 					particles.add({
@@ -820,17 +1071,29 @@ const bricks = (() => {
 		reset () {
 			this.clear();
 
-			const maxBricks = 10;
+			let powerups = Array(40).fill(false);
+
+			let numPowerUps = {
+				health: 2,
+				tnt: 2,
+			}
+
+			for (const i in numPowerUps) {
+				for (let j = 0; j < numPowerUps[i]; j ++) {
+					powerups[randomArrayInd(powerups)] = i;
+				}
+			}
+
 
 			for (let i = 0; i < 4; i ++) {
 				
 				let y = (i + 1.5) * (brickHeight + brickGap) + brickGap + brickHeight/2;
 
-				for (let j = 0; j < maxBricks; j ++) {
+				for (let j = 0; j < 10; j ++) {
 
 					let x = j * (brickWidth + brickGap) + brickGap + brickWidth/2;
 
-					this.add({ x, y, level: 3 - i})
+					this.add({ x, y, level: 3 - i, powerup: powerups[i * 10 + j] });
 				}
 			}
 		},
@@ -841,7 +1104,7 @@ const bricks = (() => {
 
 const scenes = (() => {
 
-	const sceneAfterLoading = "home";
+	const sceneAfterLoading = "audio";
 	
 	let nextTransitionData = { transition: false };
 
@@ -1177,6 +1440,8 @@ const scenes = (() => {
 			function reset () {
 				player.reset();
 				ball.reset();
+				powerups.reset();
+				particles.reset();
 			}
 
 			function wait () {
@@ -1191,6 +1456,7 @@ const scenes = (() => {
 			function play () {
 				player.run({ keys });
 				ball.run({ player, bricks });
+				powerups.run({ player });
 				particles.run();
 				bricks.run();
 
@@ -1244,7 +1510,7 @@ const scenes = (() => {
 					stroke(colors.white);
 					strokeWeight(4 * SCALE);
 
-					for (let i = 0; i < 3; i ++) {
+					for (let i = 0; i < Math.max(3, lives - 1); i ++) {
 						if (i + 1 < lives) fill(colors.white);
 						else noFill();
 
@@ -1387,6 +1653,30 @@ const scenes = (() => {
 				textSize(60 * SCALE);
 				textAlign(CENTER, CENTER);
 				text(padScore(highScore), WIDTH/2, 370 * SCALE);
+
+				pop();
+
+				buttons.run({ mouseX, mouseY, click });
+			}
+		})(),
+
+		audio: (() => {
+			return function () {
+				push();
+
+				background(colors.black);
+				fill(colors.white);
+				
+				textFont("Anton");
+				textSize(150 * SCALE);
+				textAlign(CENTER, CENTER);
+
+				text("USE AUDIO?", WIDTH/2, 210 * SCALE);
+
+				textSize(40 * SCALE);
+				textFont("Google Sans");
+
+				text("This game uses audio. Do you want to continue with audio?", WIDTH/2, 380 * SCALE);
 
 				pop();
 
