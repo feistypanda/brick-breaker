@@ -390,6 +390,110 @@ const buttons = (() => {
 	return buttons;
 })();
 
+const particles = (() => {
+	class Particle {
+		constructor (config) {
+			this.position = new Vector(config.x ?? 0, config.y ?? 0);
+			this.velocity = new Vector(config.xv ?? 0, config.yv ?? 0);
+
+			this.angle = config.angle ?? 0;
+			this.angularVelocity = config.angularVelocity ?? 0;
+
+			this.drag = 0.99;
+			this.angularDrag = 0.99;
+
+			this.shape = config.shape ?? "square";
+			this.size = config.size ?? 20 * SCALE;
+
+			this.color = config.color ?? colors.white;
+
+			this.lifeTime = config.lifeTime ?? 10;
+			this.maxLife = this.lifeTime;
+		}
+
+		get dead () {
+			return this.lifeTime <= 0;
+		}
+
+		applyVelocity () {
+			this.position = this.position.add(this.velocity);
+			this.angle += this.angularVelocity;
+		}
+
+		applyDrag () {
+			this.velocity = this.velocity.mult(this.drag);
+			this.angularVelocity *= this.angularDrag;
+		}
+
+		update () {
+			this.applyVelocity();
+			this.applyDrag();
+
+			this.lifeTime --;
+		}
+
+		display () {
+			push();
+			
+			fill(this.color.levels[0], this.color.levels[1], this.color.levels[2], 255 * this.lifeTime/this.maxLife);
+			noStroke();
+
+			switch (this.shape) {
+			case "square":
+				translate(this.position.x + this.size/2, this.position.y + this.size/2);
+				rotate(this.angle);
+				rect(-this.size/2, -this.size/2, this.size, this.size);
+				break;
+			}
+
+			pop();
+		}
+
+		run () {
+			this.update();
+			this.display();
+			return this.dead;
+		}
+	}
+
+	const particles = {
+		particles: [],
+
+		run () {
+			for (var i = this.particles.length - 1; i >= 0; i--) {
+				if (this.particles[i].run()) this.particles.splice(i, 1);
+			}
+		},
+
+		add (config) {
+			if (config.type === "breaking") {
+				for (let i = 0; i < 5; i ++) {
+					for (let j = 0; j < 8; j ++) {
+
+						let ang = Math.atan2((i - 2.5) * config.height/5, (j - 4) * config.width/8) + Math.random() * PI/5;
+						let speed = Math.random() * 2 + 2;
+
+						this.add({
+							x: config.x + j * config.width/8,
+							y: config.y + i * config.height/5,
+							xv: Math.cos(ang) * speed,
+							yv: Math.sin(ang) * speed,
+							angularVelocity: Math.random() * PI/10 - PI/20,
+							size: config.width/8,
+							lifeTime: 15,
+							color: config.color,
+						})
+					}
+				}				
+			} else {
+				this.particles.push(new Particle(config));
+			}
+		}
+	};
+
+	return particles;
+})();
+
 const player = (() => {
 
 	const calculateTopSpeed = (speed, drag) => (speed * drag) / (1 - drag)
@@ -685,7 +789,23 @@ const bricks = (() => {
 
 		run () {
 			for (var i = this.bricks.length - 1; i >= 0; i--) {
-				if (this.bricks[i].run()) this.bricks.splice(i, 1);
+				if (this.bricks[i].run()) {
+
+					let brick = this.bricks[i];
+
+					// Particle effect
+					particles.add({
+						type: "breaking",
+						x: brick.x - brick.width/2,
+						y: brick.y - brick.height/2,
+						width: brick.width,
+						height: brick.height,
+						color: brickColors[brick.level],
+					})
+
+					// delete brick
+					this.bricks.splice(i, 1);
+				}
 			}
 		},
 
@@ -1071,6 +1191,7 @@ const scenes = (() => {
 			function play () {
 				player.run({ keys });
 				ball.run({ player, bricks });
+				particles.run();
 				bricks.run();
 
 				if (ball.hitBottom) {
@@ -1333,6 +1454,7 @@ const userInput = (() => {
 
 }
 
+// Only execute once fonts are all loaded
 Promise.all([
 	document.fonts.load('400 1em "Anton"'),
 	document.fonts.load('400 1em "Google Sans"'),
